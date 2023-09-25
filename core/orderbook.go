@@ -197,6 +197,10 @@ func displayOrderBook(app *TradeApp, processor *OrderBookProcessor, n int) {
 	topBids := processor.GetTopNBids(n)
 	topOffers := processor.GetTopNOffers(n)
 
+	for i, j := 0, len(topOffers)-1; i < j; i, j = i+1, j-1 {
+		topOffers[i], topOffers[j] = topOffers[j], topOffers[i]
+	}
+
 	printLevels(topOffers, Red+"Ask: %.2f @ %.2f\n"+Reset)
 	printLevels(topBids, Green+"Bid: %.2f @ %.2f\n"+Reset)
 }
