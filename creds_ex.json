@@ -1,7 +1,7 @@
 {
   "Passphrase": "passphrase",
-  "APIKey": "apikey",
-  "APISecret": "apisecret",
-  "PortfolioID": "portfolioid",
-  "SVCAccountID": "svcaccountid"
+  "ApiKey": "apikey",
+  "ApiSecret": "apisecret",
+  "PortfolioId": "portfolioid",
+  "SvcAccountId": "svcaccountid"
  }

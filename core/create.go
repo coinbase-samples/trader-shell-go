@@ -20,6 +20,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/coinbase-samples/trader-shell-go/config"
+	"github.com/shopspring/decimal"
 	"log"
 	"os"
 	"strconv"
@@ -32,54 +34,48 @@ import (
 const (
 	credsFile     = "creds.json"
 	priceFetchGap = 10 * time.Second
-	MaxOrderSize  = 50000.0
 )
 
-type Config struct {
-	Passphrase   string
-	APIKey       string
-	APISecret    string
-	PortfolioID  string
-	SVCAccountID string
-}
+var MaxOrderSize = decimal.NewFromFloat(50000.0)
 
 type TradeApp struct {
 	*quickfix.MessageRouter
-	Config
-	SessionID    quickfix.SessionID
+	config.Config
+	SessionId    quickfix.SessionID
 	OrderBook    *OrderBookProcessor
 	disconnect   bool
 	FirstPrint   bool
-	MaxOrderSize float64
+	MaxOrderSize decimal.Decimal
+	LogonChannel chan bool
 }
 
 var supportedProducts = []string{
 	"ETH-USD",
 	"LTC-USD",
 }
-var StopOrders []StopOrder
+var stopOrders []stopOrder
 
 func DisplayMainMenu() {
-	fmt.Println("----------------------------------------------")
+	fmt.Println(LineSpacer)
 	fmt.Println("Choose an option:")
-	fmt.Println("1. Trade input")
-	fmt.Println("2. Market data")
-	fmt.Println("3. Order manager")
-	fmt.Println("4. OCO manager")
-	fmt.Println("Type 'x' to quit.")
+	fmt.Printf("%d. Trade input\n", TradeInput)
+	fmt.Printf("%d. Market data\n", MarketData)
+	fmt.Printf("%d. Order manager\n", OrderManager)
+	fmt.Printf("%d. OCO manager\n", OCOManager)
+	fmt.Printf("Type '%s' to quit.\n", SelectExit)
 }
 
 func HandleMainMenuChoice(choice string, app *TradeApp, reader *bufio.Reader) {
 	switch choice {
-	case "1":
-		tradeInputMode(app, reader)
-	case "2":
+	case SelectTrade:
+		app.tradeInputMode(reader)
+	case SelectMarket:
 		app.MarketDataMode(reader)
-	case "3":
-		orderManagerMode(app, reader)
-	case "4":
-		app.DisplayStopOrders()
-	case "x":
+	case SelectOrder:
+		app.orderManagerMode(reader)
+	case SelectOco:
+		app.displayStopOrders()
+	case SelectExit:
 		fmt.Println("Exiting...")
 		os.Exit(0)
 	default:
@@ -87,7 +83,7 @@ func HandleMainMenuChoice(choice string, app *TradeApp, reader *bufio.Reader) {
 	}
 }
 
-func tradeInputMode(app *TradeApp, reader *bufio.Reader) {
+func (app *TradeApp) tradeInputMode(reader *bufio.Reader) {
 	for {
 		usdBalance, err := app.GetAssetBalance("USD")
 		if err != nil {
@@ -103,23 +99,22 @@ func tradeInputMode(app *TradeApp, reader *bufio.Reader) {
 			continue
 		}
 
-		if strings.ToLower(input) == "x" {
+		if strings.ToLower(input) == SelectExit {
 			break
 		}
 
 		args := strings.Split(input, " ")
-
 		app.ProcessSimpleTradeInput(args)
 		if strings.ToLower(input) != "h" {
-			fmt.Println("------------------------------")
+			fmt.Println(LineSpacer)
 		}
 		time.Sleep(time.Second * 1)
 	}
 }
 
-func orderManagerMode(app *TradeApp, reader *bufio.Reader) {
+func (app *TradeApp) orderManagerMode(reader *bufio.Reader) {
 	for {
-		fmt.Println("------------------------------")
+		fmt.Println(LineSpacer)
 		fmt.Println("Select an option:")
 		fmt.Println("1. Manage open orders")
 		fmt.Println("2. View recent closed orders")
@@ -129,34 +124,29 @@ func orderManagerMode(app *TradeApp, reader *bufio.Reader) {
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
-		if input == "x" {
+		if input == SelectExit {
 			return
 		}
 
 		choice, err := strconv.Atoi(input)
-		if err != nil {
+		if err != nil || choice < SelectOpenOrders || choice > SelectBalances {
 			fmt.Println("Invalid choice. Please select again.")
 			continue
 		}
 
 		switch choice {
-		case 1:
-			err := app.GetOpenOrders()
-			if err != nil {
+		case SelectOpenOrders:
+			if err := app.GetOpenOrders(); err != nil {
 				return
 			}
-		case 2:
-			err := app.GetAllOrders()
-			if err != nil {
+		case SelectClosedOrders:
+			if err := app.GetAllOrders(); err != nil {
 				return
 			}
-		case 3:
-			err := app.ViewPortfolioBalances()
-			if err != nil {
+		case SelectBalances:
+			if err := app.ViewPortfolioBalances(); err != nil {
 				return
 			}
-		default:
-			fmt.Println("Invalid choice. Please select again.")
 		}
 	}
 }
@@ -169,14 +159,14 @@ func loadAppSettings(cfg *os.File) (*quickfix.Settings, error) {
 	return quickfix.ParseSettings(cfg)
 }
 
-func loadCredentials(fileName string) (*Config, error) {
+func loadCredentials(fileName string) (*config.Config, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	credentials := &Config{}
+	credentials := &config.Config{}
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&credentials)
 	return credentials, err
@@ -185,10 +175,13 @@ func loadCredentials(fileName string) (*Config, error) {
 func GetUserInput(reader *bufio.Reader) (string, error) {
 	fmt.Print("> ")
 	input, err := reader.ReadString('\n')
-	return strings.TrimSpace(input), err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(strings.TrimRight(input, "\n\r")), nil
 }
 
-func InitializeApp(args []string) (*quickfix.Settings, *Config) {
+func InitializeApp(args []string) (*quickfix.Settings, *config.Config) {
 	cfg, err := loadConfig(args[1])
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
@@ -207,12 +200,13 @@ func InitializeApp(args []string) (*quickfix.Settings, *Config) {
 	return appSettings, credentials
 }
 
-func CreateTradeApp(credentials *Config) *TradeApp {
+func CreateTradeApp(credentials *config.Config) *TradeApp {
 	return &TradeApp{
 		MessageRouter: quickfix.NewMessageRouter(),
 		Config:        *credentials,
 		FirstPrint:    true,
 		MaxOrderSize:  MaxOrderSize,
+		LogonChannel:  make(chan bool),
 	}
 }
 
@@ -226,7 +220,8 @@ func StartServices(app *TradeApp, appSettings *quickfix.Settings) {
 	}
 
 	go initiator.Start()
-	time.Sleep(time.Second * 2)
+
+	<-app.LogonChannel
 
 	products := supportedProducts
 	StartPriceFetchingTask(app, products, priceFetchGap)

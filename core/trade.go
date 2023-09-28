@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/shopspring/decimal"
 	"log"
 	"strconv"
 	"strings"
@@ -25,32 +26,32 @@ import (
 	"github.com/quickfixgo/quickfix"
 )
 
-type ParsedTradeParams struct {
+type parsedTradeParams struct {
 	Product      string
 	OrderType    string
 	Side         string
 	BaseQuantity string
 }
 
-type StopOrder struct {
+type stopOrder struct {
 	Product       string
 	Side          string
 	Amount        float64
-	StopPrice     float64
-	PlacedOrderID string
+	StopPrice     decimal.Decimal
+	PlacedOrderId string
 	BaseQuantity  string
 }
 
-var TempStopOrders = make(map[string]StopOrder)
+var tempStopOrders = make(map[string]stopOrder)
 
 func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 	isPreview := false
-	isOCO := false
-	var ocoPrice float64
+	isOco := false
+	var ocoPrice decimal.Decimal
 	var err error
-	var clOrdID string
-	var newOrder StopOrder
-	var limitPrice float64
+	var clOrdId string
+	var newOrder stopOrder
+	var limitPrice decimal.Decimal
 
 	for i := 0; i < len(args); {
 		switch args[i] {
@@ -59,9 +60,9 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 			args = append(args[:i], args[i+1:]...)
 			i--
 		case "-oco":
-			isOCO = true
+			isOco = true
 			if i+1 < len(args) {
-				ocoPrice, err = strconv.ParseFloat(args[i+1], 64)
+				ocoPrice, err = decimal.NewFromString(args[i+1])
 				if err != nil {
 					fmt.Println("Error: Invalid OCO price.")
 					return
@@ -79,12 +80,12 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 		i++
 	}
 
-	if isPreview && isOCO {
+	if isPreview && isOco {
 		fmt.Println("Error: -p and -oco flags cannot be used together.")
 		return
 	}
 
-	if len(args) < 4 {
+	if len(args) < MinRequiredArgs {
 		fmt.Println("Error: Insufficient parameters.")
 		return
 	}
@@ -95,13 +96,13 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 		return
 	}
 
-	if isOCO && params.OrderType != "LIMIT" {
+	if isOco && params.OrderType != TradeTypeLimit {
 		fmt.Println("Error: -oco can only be used with limit (lim) orders.")
 		return
 	}
 
-	if params.OrderType != "MARKET" {
-		limitPrice, err = strconv.ParseFloat(limitPriceStr, 64)
+	if params.OrderType != TradeTypeMarket {
+		limitPrice, err = decimal.NewFromString(limitPriceStr)
 		if err != nil {
 			fmt.Println("Error parsing limit price:", err)
 			return
@@ -116,7 +117,7 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 		return
 	}
 
-	if isOCO && (params.Side == "b" && ocoPrice <= limitPrice || params.Side == "s" && ocoPrice >= limitPrice) {
+	if isOco && (params.Side == ArgBuy && ocoPrice.LessThanOrEqual(limitPrice) || params.Side == ArgSell && ocoPrice.GreaterThanOrEqual(limitPrice)) {
 		fmt.Println("Error: Invalid relationship between order price and OCO price.")
 		return
 	}
@@ -126,24 +127,23 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 	}
 
 	if isPreview {
-		err := app.PreviewOrder(params, limitPriceStr)
-		if err != nil {
+		if err := app.PreviewOrder(params, limitPriceStr); err != nil {
 			log.Printf("Failed to preview order: %v", err)
 		}
 		return
 	}
 
-	clOrdID = app.ConstructTrade(params, limitPriceStr, app.SessionID)
+	clOrdId = app.ConstructTrade(params, limitPriceStr, app.SessionId)
 
-	if isOCO {
-		newOrder = StopOrder{
+	if isOco {
+		newOrder = stopOrder{
 			Product:      params.Product,
 			Side:         params.Side,
 			BaseQuantity: params.BaseQuantity,
 			Amount:       amount,
 			StopPrice:    ocoPrice,
 		}
-		TempStopOrders[clOrdID] = newOrder
+		tempStopOrders[clOrdId] = newOrder
 	}
 }
 
@@ -158,20 +158,20 @@ func printHelp() {
 	fmt.Println("Ex: eth-usd lim b 1500 0.001 -oco 2000\n" + Reset)
 }
 
-func parseArgs(args []string) (ParsedTradeParams, string, error) {
+func parseArgs(args []string) (parsedTradeParams, string, error) {
 	product := strings.ToUpper(args[0])
 	orderType := getTradeType(args[1])
 	side := getTradeSide(args[2])
 	baseQuantity := args[3]
 
-	params := ParsedTradeParams{
+	params := parsedTradeParams{
 		Product:      product,
 		OrderType:    orderType,
 		Side:         side,
 		BaseQuantity: baseQuantity,
 	}
 
-	if params.OrderType == "LIMIT" {
+	if params.OrderType == TradeTypeLimit {
 		if len(args) <= 4 {
 			return params, "", fmt.Errorf("limit price required for limit order")
 		}
@@ -184,31 +184,30 @@ func parseArgs(args []string) (ParsedTradeParams, string, error) {
 }
 
 func getTradeType(arg string) string {
-	if arg == "mkt" {
-		return "MARKET"
+	if arg == ArgMarket {
+		return TradeTypeMarket
 	}
-	return "LIMIT"
+	return TradeTypeLimit
 }
 
 func getTradeSide(arg string) string {
-	if arg == "b" {
-		return "BUY"
+	if arg == ArgBuy {
+		return TradeSideBuy
 	}
-	return "SELL"
+	return TradeSideSell
 }
 
-func (app *TradeApp) ConstructTrade(params ParsedTradeParams, limitPrice string, sessionID quickfix.SessionID) string {
-	msg, clOrdID := app.CreateHeader(app.PortfolioID, "D")
+func (app *TradeApp) ConstructTrade(params parsedTradeParams, limitPrice string, sessionId quickfix.SessionID) string {
+	msg, clOrdId := app.CreateHeader(app.PortfolioId, "D")
 	setTradeMessage(msg, params, limitPrice)
 
-	err := quickfix.SendToTarget(msg, sessionID)
-	if err != nil {
+	if err := quickfix.SendToTarget(msg, sessionId); err != nil {
 		log.Printf("Error sending trade: %v", err)
 	}
-	return clOrdID
+	return clOrdId
 }
 
-func setTradeMessage(msg *quickfix.Message, params ParsedTradeParams, limitPrice string) {
+func setTradeMessage(msg *quickfix.Message, params parsedTradeParams, limitPrice string) {
 	msg.Body.SetString(quickfix.Tag(FixTagSymbol), params.Product)
 	setOrderType(msg, params.OrderType, limitPrice)
 	setSide(msg, params.Side)
@@ -216,11 +215,11 @@ func setTradeMessage(msg *quickfix.Message, params ParsedTradeParams, limitPrice
 }
 
 func setOrderType(msg *quickfix.Message, orderType, limitPrice string) {
-	if orderType == "MARKET" {
+	if orderType == TradeTypeMarket {
 		msg.Body.SetString(quickfix.Tag(FixTagOrdType), FixOrdTypeMarket)
 		msg.Body.SetString(quickfix.Tag(FixTagTimeInForce), FixTimeInForceIOC)
 		msg.Body.SetString(quickfix.Tag(FixTagExecInst), FixExecInstMarket)
-	} else if orderType == "LIMIT" {
+	} else if orderType == TradeTypeLimit {
 		msg.Body.SetString(quickfix.Tag(FixTagOrdType), FixOrdTypeLimit)
 		msg.Body.SetString(quickfix.Tag(FixTagTimeInForce), FixTimeInForceGTC)
 		msg.Body.SetString(quickfix.Tag(FixTagExecInst), FixExecInstLimit)
@@ -229,7 +228,7 @@ func setOrderType(msg *quickfix.Message, orderType, limitPrice string) {
 }
 
 func setSide(msg *quickfix.Message, side string) {
-	if side == "BUY" {
+	if side == TradeSideBuy {
 		msg.Body.SetString(quickfix.Tag(FixTagSide), FixSideBuy)
 	} else {
 		msg.Body.SetString(quickfix.Tag(FixTagSide), FixSideSell)

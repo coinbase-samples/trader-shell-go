@@ -81,12 +81,12 @@ func (app *TradeApp) makeAuthenticatedRequest(method, path, queryParams string, 
 	if body != nil {
 		message += string(body)
 	}
-	signature := computeHMAC256(message, app.APISecret)
+	signature := computeHMAC256(message, app.ApiSecret)
 
 	headers := map[string]string{
 		HeaderAccessSig:  signature,
 		HeaderAccessTime: timestamp,
-		HeaderAccessKey:  app.APIKey,
+		HeaderAccessKey:  app.ApiKey,
 		HeaderPassphrase: app.Passphrase,
 		"Accept":         "application/json",
 	}
@@ -96,8 +96,7 @@ func (app *TradeApp) makeAuthenticatedRequest(method, path, queryParams string, 
 
 func (app *TradeApp) extractOrdersFromResponse(body []byte) ([]interface{}, error) {
 	var parsedResponse map[string]interface{}
-	err := json.Unmarshal(body, &parsedResponse)
-	if err != nil {
+	if err := json.Unmarshal(body, &parsedResponse); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +109,7 @@ func (app *TradeApp) extractOrdersFromResponse(body []byte) ([]interface{}, erro
 }
 
 func (app *TradeApp) GetOpenOrders() error {
-	path := fmt.Sprintf("/v1/portfolios/%s/open_orders", app.PortfolioID)
+	path := fmt.Sprintf("/v1/portfolios/%s/open_orders", app.PortfolioId)
 	body, err := app.makeAuthenticatedRequest("GET", path, "", nil)
 	if err != nil {
 		return err
@@ -121,8 +120,7 @@ func (app *TradeApp) GetOpenOrders() error {
 		return err
 	}
 
-	err = app.displayAndSelectOrder(orders, false)
-	if err != nil {
+	if err := app.displayAndSelectOrder(orders, false); err != nil {
 		if err == ErrOrderCanceled {
 			return app.GetOpenOrders()
 		}
@@ -132,7 +130,7 @@ func (app *TradeApp) GetOpenOrders() error {
 }
 
 func (app *TradeApp) GetAllOrders() error {
-	path := fmt.Sprintf("/v1/portfolios/%s/orders", app.PortfolioID)
+	path := fmt.Sprintf("/v1/portfolios/%s/orders", app.PortfolioId)
 	body, err := app.makeAuthenticatedRequest("GET", path, "", nil)
 	if err != nil {
 		return err
@@ -162,7 +160,7 @@ func (app *TradeApp) displayAndSelectOrder(orders []interface{}, allOrders bool)
 			orders = orders[:20]
 		}
 
-		fmt.Println(Blue + "#  | ID                                   | Product | Side | Type   | Lim Px  | Base Qty| Quote Val" + Reset)
+		fmt.Println(Blue + "#  | Id                                   | Product | Side | Type   | Lim Px  | Base Qty| Quote Val" + Reset)
 		for i, order := range orders {
 			orderMap, ok := order.(map[string]interface{})
 			if !ok {
@@ -188,7 +186,7 @@ func (app *TradeApp) displayAndSelectOrder(orders []interface{}, allOrders bool)
 			input, _ := reader.ReadString('\n')
 			input = strings.TrimSpace(input)
 
-			if input == "x" {
+			if input == SelectExit {
 				return nil
 			}
 
@@ -201,7 +199,7 @@ func (app *TradeApp) displayAndSelectOrder(orders []interface{}, allOrders bool)
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
-		if input == "x" {
+		if input == SelectExit {
 			return nil
 		}
 
@@ -221,16 +219,15 @@ func (app *TradeApp) displayAndSelectOrder(orders []interface{}, allOrders bool)
 		selectedOrder := orders[choice-1]
 
 		if !autoCancel {
-			orderJSON, err := json.MarshalIndent(selectedOrder, "", "  ")
+			orderJson, err := json.MarshalIndent(selectedOrder, "", "  ")
 			if err != nil {
 				log.Println("Failed to marshal order:", err)
 				return err
 			}
 
-			fmt.Println(string(orderJSON))
+			fmt.Println(string(orderJson))
 		} else {
-			err = app.userActionOnOpenOrder(selectedOrder, orders, autoCancel)
-			if err != nil {
+			if err := app.userActionOnOpenOrder(selectedOrder, orders, autoCancel); err != nil {
 				return ErrOrderCanceled
 			}
 		}
@@ -254,10 +251,9 @@ func (app *TradeApp) userActionOnOpenOrder(order interface{}, orders []interface
 
 		id, ok := orderMap["id"].(string)
 		if !ok {
-			return fmt.Errorf("invalid order ID")
+			return fmt.Errorf("invalid order Id")
 		}
-		err := app.CancelOrder(id)
-		if err != nil {
+		if err := app.CancelOrder(id); err != nil {
 			log.Println("Failed to cancel order:", err)
 			return err
 		}
@@ -267,7 +263,7 @@ func (app *TradeApp) userActionOnOpenOrder(order interface{}, orders []interface
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Println("\nType 'c' to cancel the order or type 'x' to go back to the order ID selector.")
+		fmt.Println("\nType 'c' to cancel the order or type 'x' to go back to the order Id selector.")
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
@@ -280,17 +276,16 @@ func (app *TradeApp) userActionOnOpenOrder(order interface{}, orders []interface
 
 			id, ok := orderMap["id"].(string)
 			if !ok {
-				return fmt.Errorf("invalid order ID")
+				return fmt.Errorf("invalid order Id")
 			}
-			err := app.CancelOrder(id)
-			if err != nil {
+			if err := app.CancelOrder(id); err != nil {
 				log.Println("Failed to cancel order:", err)
 				return err
 			}
 			time.Sleep(time.Second * 1)
 			return fmt.Errorf("order Canceled")
 
-		case "x":
+		case SelectExit:
 			return nil
 		default:
 			fmt.Println("Invalid choice. Please select again.")
@@ -299,11 +294,11 @@ func (app *TradeApp) userActionOnOpenOrder(order interface{}, orders []interface
 	return nil
 }
 
-func (app *TradeApp) CancelOrder(orderID string) error {
-	path := fmt.Sprintf("/v1/portfolios/%s/orders/%s/cancel", app.PortfolioID, orderID)
+func (app *TradeApp) CancelOrder(orderId string) error {
+	path := fmt.Sprintf("/v1/portfolios/%s/orders/%s/cancel", app.PortfolioId, orderId)
 	payload := map[string]string{
-		"portfolio_id": app.PortfolioID,
-		"order_id":     orderID,
+		"portfolio_id": app.PortfolioId,
+		"order_id":     orderId,
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -328,7 +323,7 @@ func (app *TradeApp) ViewPortfolioBalances() error {
 		if asset == "" {
 			fmt.Println("Invalid input. Please enter a valid asset.")
 			continue
-		} else if asset == "x" {
+		} else if asset == SelectExit {
 			break
 		}
 
@@ -351,7 +346,7 @@ func formatToUSD(value string) string {
 }
 
 func (app *TradeApp) GetAssetBalance(asset string) (Balance, error) {
-	path := fmt.Sprintf("/v1/portfolios/%s/balances", app.PortfolioID)
+	path := fmt.Sprintf("/v1/portfolios/%s/balances", app.PortfolioId)
 	queryParams := fmt.Sprintf("balance_type=TRADING_BALANCES&symbols=%s", asset)
 	body, err := app.makeAuthenticatedRequest("GET", path, queryParams, nil)
 	if err != nil {
@@ -359,8 +354,7 @@ func (app *TradeApp) GetAssetBalance(asset string) (Balance, error) {
 	}
 
 	var balanceData BalanceResponse
-	err = json.Unmarshal(body, &balanceData)
-	if err != nil {
+	if err := json.Unmarshal(body, &balanceData); err != nil {
 		return Balance{}, err
 	}
 
@@ -374,12 +368,12 @@ func (app *TradeApp) GetAssetBalance(asset string) (Balance, error) {
 		}
 		return balance, nil
 	} else {
-		return Balance{}, errors.New("No balance data available for the specified asset.")
+		return Balance{}, errors.New("no balance data available for the specified asset")
 	}
 }
 
-func (app *TradeApp) PreviewOrder(params ParsedTradeParams, limitPrice string) error {
-	path := fmt.Sprintf("/v1/portfolios/%s/order_preview", app.PortfolioID)
+func (app *TradeApp) PreviewOrder(params parsedTradeParams, limitPrice string) error {
+	path := fmt.Sprintf("/v1/portfolios/%s/order_preview", app.PortfolioId)
 
 	payload := map[string]string{
 		"product_id":      params.Product,
@@ -389,7 +383,7 @@ func (app *TradeApp) PreviewOrder(params ParsedTradeParams, limitPrice string) e
 		"base_quantity":   params.BaseQuantity,
 	}
 
-	if params.OrderType == "LIMIT" {
+	if params.OrderType == TradeTypeLimit {
 		payload["limit_price"] = limitPrice
 	}
 
@@ -404,8 +398,7 @@ func (app *TradeApp) PreviewOrder(params ParsedTradeParams, limitPrice string) e
 	}
 
 	var response OrderPreviewResponse
-	err = json.Unmarshal(responseBytes, &response)
-	if err != nil {
+	if err := json.Unmarshal(responseBytes, &response); err != nil {
 		return err
 	}
 	printOrderPreview(response)
@@ -426,7 +419,7 @@ func printOrderPreview(response OrderPreviewResponse) {
 	}
 }
 
-func (app *TradeApp) handlePreviewAction(params ParsedTradeParams, limitPrice string) {
+func (app *TradeApp) handlePreviewAction(params parsedTradeParams, limitPrice string) {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -439,9 +432,9 @@ func (app *TradeApp) handlePreviewAction(params ParsedTradeParams, limitPrice st
 
 		input = strings.TrimSpace(input)
 		if input == "g" {
-			app.ConstructTrade(params, limitPrice, app.SessionID)
+			app.ConstructTrade(params, limitPrice, app.SessionId)
 			break
-		} else if input == "x" {
+		} else if input == SelectExit {
 			fmt.Println("Returning to order creation...")
 			break
 		} else {

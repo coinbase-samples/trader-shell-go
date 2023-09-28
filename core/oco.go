@@ -24,10 +24,10 @@ import (
 	"strings"
 )
 
-func (app *TradeApp) DisplayStopOrders() {
+func (app *TradeApp) displayStopOrders() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		if len(StopOrders) == 0 {
+		if len(stopOrders) == 0 {
 			fmt.Println("No stop orders found!")
 			return
 		}
@@ -43,50 +43,50 @@ func (app *TradeApp) DisplayStopOrders() {
 		}
 		input = strings.TrimSpace(input)
 
-		if input == "x" {
+		if input == SelectExit {
 			return
 		}
 
 		autoCancel := false
-		if strings.HasSuffix(input, "-c") {
+		if strings.HasSuffix(input, AppendCancel) {
 			autoCancel = true
-			input = strings.TrimSuffix(input, "-c")
+			input = strings.TrimSuffix(input, AppendCancel)
 			input = strings.TrimSpace(input)
 		}
 
 		choice, err := strconv.Atoi(input)
-		if err != nil || choice <= 0 || choice > len(StopOrders) {
+		if err != nil || choice <= 0 || choice > len(stopOrders) {
 			fmt.Println("Invalid choice. Please select again.")
 			continue
 		}
 
 		if autoCancel {
-			StopOrders = append(StopOrders[:choice-1], StopOrders[choice:]...)
+			stopOrders = append(stopOrders[:choice-1], stopOrders[choice:]...)
 			fmt.Printf("Removed stop order #%d\n", choice)
 		}
 	}
 }
 
 func (app *TradeApp) printStopOrders() {
-	fmt.Println(Blue + "No. | Product | Side | Amount | Stop Price | Linked Order ID" + Reset)
-	fmt.Println("---------------------------------------------------------")
-	for i, order := range StopOrders {
-		fmt.Printf(Blue+"%d. %s | %s | %f | %f | %s\n"+Reset, i+1, order.Product, order.Side, order.Amount, order.StopPrice, order.PlacedOrderID)
+	fmt.Println(Blue + "No. | Product | Side | Amount | Stop Price | Linked Order Id" + Reset)
+	fmt.Println(LineSpacer)
+	for i, order := range stopOrders {
+		fmt.Printf(Blue+"%d. %s | %s | %f | %s | %s\n"+Reset, i+1, order.Product, order.Side, order.Amount, order.StopPrice.String(), order.PlacedOrderId)
 	}
 }
 
-func orderExistsInStopOrders(orderID string) bool {
-	for _, order := range StopOrders {
-		if order.PlacedOrderID == orderID {
+func orderExistsInStopOrders(orderId string) bool {
+	for _, order := range stopOrders {
+		if order.PlacedOrderId == orderId {
 			return true
 		}
 	}
 	return false
 }
 
-func findOrderIndexByID(orderID string) int {
-	for i, order := range StopOrders {
-		if order.PlacedOrderID == orderID {
+func findOrderIndexById(orderId string) int {
+	for i, order := range stopOrders {
+		if order.PlacedOrderId == orderId {
 			return i
 		}
 	}

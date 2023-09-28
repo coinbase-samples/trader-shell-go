@@ -28,37 +28,38 @@ import (
 	"strings"
 )
 
-func (app *TradeApp) CreateHeader(portfolioID, messageType string) (*quickfix.Message, string) {
+func (app *TradeApp) CreateHeader(portfolioId, messageType string) (*quickfix.Message, string) {
 	message := quickfix.NewMessage()
 
 	message.Header.SetString(quickfix.Tag(FixTagMsgType), messageType)
-	message.Header.SetString(quickfix.Tag(FixTagPortfolioId), portfolioID)
+	message.Header.SetString(quickfix.Tag(FixTagPortfolioId), portfolioId)
 
-	clOrdID := uuid.New().String()
-	message.Header.SetString(quickfix.Tag(FixTagClOrdId), clOrdID)
+	clOrdId := uuid.New().String()
+	message.Header.SetString(quickfix.Tag(FixTagClOrdId), clOrdId)
 
-	return message, clOrdID
+	return message, clOrdId
 }
 
-func (app *TradeApp) OnCreate(sessionID quickfix.SessionID) {
-	fmt.Println(Green+"OnCreate : Session "+Reset, sessionID)
-	app.SessionID = sessionID
+func (app *TradeApp) OnCreate(sessionId quickfix.SessionID) {
+	fmt.Println(Green+"OnCreate : Session "+Reset, sessionId)
+	app.SessionId = sessionId
 	return
 }
 
-func (app *TradeApp) OnLogon(sessionID quickfix.SessionID) {
-	fmt.Println("---------------Successful Logon----------------")
-	app.SessionID = sessionID
+func (app *TradeApp) OnLogon(sessionId quickfix.SessionID) {
+	fmt.Println(SuccessfulLogon)
+	app.SessionId = sessionId
 	fmt.Println(Ascii)
+	app.LogonChannel <- true
 	return
 }
 
-func (app *TradeApp) OnLogout(sessionID quickfix.SessionID) {
+func (app *TradeApp) OnLogout(sessionId quickfix.SessionID) {
 	fmt.Println("OnLogout")
 	return
 }
 
-func (app *TradeApp) onMessage(message *quickfix.Message, sessionID quickfix.SessionID) (reject quickfix.MessageRejectError) {
+func (app *TradeApp) onMessage(message *quickfix.Message, sessionId quickfix.SessionID) (reject quickfix.MessageRejectError) {
 	msgTypeField, err := message.Header.GetString(quickfix.Tag(FixTagMsgType))
 	if err != nil {
 	}
@@ -72,7 +73,7 @@ func (app *TradeApp) onMessage(message *quickfix.Message, sessionID quickfix.Ses
 		if textField, err := message.Body.GetString(quickfix.Tag(FixTagText)); err == nil {
 			fmt.Println("Message Rejected, Reason:", textField)
 		} else {
-			fmt.Println("Message Rejected, Reason: Not Returned")
+			fmt.Println("Message Rejected, Reason:", FixExecNotReturned)
 		}
 	}
 
@@ -91,83 +92,84 @@ func (app *TradeApp) getExecType(message *quickfix.Message) {
 		execTypeDescription = "Unknown"
 	}
 
-	var reason string
+	reason := "Not Returned"
 	if textField, err := message.Body.GetString(quickfix.Tag(FixTagText)); err == nil {
 		reason = textField
-	} else {
-		reason = "Not Returned"
 	}
 
-	orderIDField, err := message.Body.GetString(quickfix.Tag(FixTagOrderId))
+	orderIdField, err := message.Body.GetString(quickfix.Tag(FixTagOrderId))
 	if err != nil {
-		log.Printf("Error parsing orderIDField: %v", err)
+		log.Printf("Error parsing orderIdField: %v", err)
 		return
 	}
 
-	clOrdIDField, err := message.Body.GetString(quickfix.Tag(FixTagClOrdId))
+	clOrdIdField, err := message.Body.GetString(quickfix.Tag(FixTagClOrdId))
 	if err != nil {
-		log.Printf("Error parsing clOrdIDField: %v", err)
+		log.Printf("Error parsing clOrdIdField: %v", err)
 		return
 	}
 
-	if tempOrder, ok := TempStopOrders[clOrdIDField]; ok {
+	if tempOrder, ok := tempStopOrders[clOrdIdField]; ok {
 
-		tempOrder.PlacedOrderID = orderIDField
-		TempStopOrders[clOrdIDField] = tempOrder
-		if !orderExistsInStopOrders(orderIDField) {
-			StopOrders = append(StopOrders, tempOrder)
+		tempOrder.PlacedOrderId = orderIdField
+		tempStopOrders[clOrdIdField] = tempOrder
+		if !orderExistsInStopOrders(orderIdField) {
+			stopOrders = append(stopOrders, tempOrder)
 		}
 	}
 
-	if execTypeDescription == "Fill" || execTypeDescription == "Canceled" {
-		index := findOrderIndexByID(orderIDField)
+	if execTypeDescription == FixExecFill || execTypeDescription == FixExecCanceled {
+		index := findOrderIndexById(orderIdField)
 		if index != -1 {
-			StopOrders = append(StopOrders[:index], StopOrders[index+1:]...)
+			stopOrders = append(stopOrders[:index], stopOrders[index+1:]...)
 		}
 	}
 
-	if reason == "Not Returned" {
-		fmt.Printf(Green+"ExecType: %s (%s), OrderID: %s\n"+Reset, execTypeField, execTypeDescription, orderIDField)
+	if reason == FixExecNotReturned {
+		fmt.Printf(Green+"ExecType: %s (%s), OrderId: %s\n"+Reset, execTypeField, execTypeDescription, orderIdField)
 	} else {
-		fmt.Printf(Green+"ExecType: %s (%s), Reason: %s, OrderID: %s\n"+Reset, execTypeField, execTypeDescription, reason, orderIDField)
+		fmt.Printf(Green+"ExecType: %s (%s), Reason: %s, OrderId: %s\n"+Reset, execTypeField, execTypeDescription, reason, orderIdField)
 	}
 }
 
-func (app *TradeApp) ToAdmin(message *quickfix.Message, sessionID quickfix.SessionID) {
-	msgTypeField, _ := message.Header.GetString(quickfix.Tag(FixTagMsgType))
+func (app *TradeApp) ToAdmin(message *quickfix.Message, sessionId quickfix.SessionID) {
+	msgTypeField, err := message.Header.GetString(quickfix.Tag(FixTagMsgType))
+	if err != nil {
+		log.Fatalf("Error setting header: %v", err)
+	}
 
 	if msgTypeField == FixMsgLogon {
 		sendingTime, _ := message.Header.GetString(quickfix.Tag(FixTagSendingTime))
 		msgSeqNum, _ := message.Header.GetInt(quickfix.Tag(FixTagMsgSeqNum))
-		targetCompID, _ := message.Header.GetString(quickfix.Tag(FixTagTargetCompId))
-		rawData := app.sign(sendingTime, msgTypeField, strconv.Itoa(msgSeqNum), app.APIKey, targetCompID, app.Passphrase)
+		targetCompId, _ := message.Header.GetString(quickfix.Tag(FixTagTargetCompId))
+		rawData := app.sign(sendingTime, msgTypeField, strconv.Itoa(msgSeqNum), targetCompId)
 
 		message.Header.SetField(quickfix.Tag(FixTagPassword), quickfix.FIXString(app.Passphrase))
 		message.Header.SetField(quickfix.Tag(FixTagRawData), quickfix.FIXString(rawData))
 		message.Header.SetField(quickfix.Tag(FixTagRawDataLen), quickfix.FIXInt(len(rawData)))
-		message.Header.SetField(quickfix.Tag(FixTagAccessKey), quickfix.FIXString(app.APIKey))
+		message.Header.SetField(quickfix.Tag(FixTagAccessKey), quickfix.FIXString(app.ApiKey))
 	}
 	fmt.Println(Green+"(Admin) S >> "+Reset, message)
 }
 
-func (app *TradeApp) ToApp(message *quickfix.Message, sessionID quickfix.SessionID) (err error) {
+func (app *TradeApp) ToApp(message *quickfix.Message, sessionId quickfix.SessionID) (err error) {
 	return
 }
 
-func (app *TradeApp) FromAdmin(message *quickfix.Message, sessionID quickfix.SessionID) (reject quickfix.MessageRejectError) {
+func (app *TradeApp) FromAdmin(message *quickfix.Message, sessionId quickfix.SessionID) (reject quickfix.MessageRejectError) {
 	fmt.Println(Green+"(Admin) R << "+Reset, message)
-	app.onMessage(message, sessionID)
+	app.onMessage(message, sessionId)
 	return nil
 }
 
-func (app *TradeApp) FromApp(message *quickfix.Message, sessionID quickfix.SessionID) (reject quickfix.MessageRejectError) {
-	app.onMessage(message, sessionID)
+func (app *TradeApp) FromApp(message *quickfix.Message, sessionId quickfix.SessionID) (reject quickfix.MessageRejectError) {
+	app.onMessage(message, sessionId)
 	return nil
 }
 
-func (app *TradeApp) sign(t, msgType, seqNum, accessKey, targetCompID, passphrase string) string {
-	message := []byte(t + msgType + seqNum + accessKey + targetCompID + passphrase)
-	hmac256 := hmac.New(sha256.New, []byte(app.APISecret))
+func (app TradeApp) sign(t, msgType, seqNum, targetCompId string) string {
+	message := []byte(t + msgType + seqNum + app.ApiKey + targetCompId + app.Passphrase)
+	hmac256 := hmac.New(sha256.New, []byte(app.ApiSecret))
 	hmac256.Write(message)
 	signature := base64.StdEncoding.EncodeToString(hmac256.Sum(nil))
 	return signature

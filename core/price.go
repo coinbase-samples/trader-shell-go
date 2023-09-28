@@ -19,9 +19,9 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/shopspring/decimal"
 	"log"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -33,105 +33,107 @@ type PriceData struct {
 	Time  time.Time `json:"time"`
 }
 
+var stopOrdersMutex sync.Mutex
 var priceCache = make(map[string]PriceData)
 
-func getAndCheckPrice(app *TradeApp, productID string) {
-	currentPrice, err := fetchPrice(productID)
+func getAndCheckPrice(app *TradeApp, productId string) {
+	currentPrice, err := fetchPrice(productId)
 	if err != nil {
-		log.Printf("Failed to fetch price for %s: %v", productID, err)
+		log.Printf("Failed to fetch price for %s: %v", productId, err)
 		return
 	}
 
-	processStopOrders(app, productID, currentPrice)
+	processStopOrders(app, productId, currentPrice)
 }
 
-func fetchPrice(productID string) (float64, error) {
-	url := "https://api.exchange.coinbase.com/products/" + productID + "/ticker"
+func fetchPrice(productId string) (decimal.Decimal, error) {
+	url := "https://api.exchange.coinbase.com/products/" + productId + "/ticker"
 	resp, err := http.Get(url)
 	if err != nil {
-		return 0, err
+		return decimal.Decimal{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("non-200 response code when fetching price for %s: %d", productID, resp.StatusCode)
+		return decimal.Decimal{}, fmt.Errorf("non-200 response code when fetching price for %s: %d", productId, resp.StatusCode)
 	}
 
 	var data PriceData
 	decoder := json.NewDecoder(resp.Body)
-	err = decoder.Decode(&data)
-	if err != nil {
-		return 0, err
+	if err = decoder.Decode(&data); err != nil {
+		return decimal.Decimal{}, fmt.Errorf("failed to decode price data for %s: %v", productId, err)
 	}
 
-	priceCache[productID] = data
-	return strconv.ParseFloat(data.Price, 64)
+	priceCache[productId] = data
+	return decimal.NewFromString(data.Price)
 }
 
-var stopOrdersMutex sync.Mutex
-
-func processStopOrders(app *TradeApp, productID string, currentPrice float64) {
+func processStopOrders(app *TradeApp, productId string, currentPrice decimal.Decimal) {
 	stopOrdersMutex.Lock()
 	defer stopOrdersMutex.Unlock()
 
 	var toRemove []int
-	for i := len(StopOrders) - 1; i >= 0; i-- {
-		order := StopOrders[i]
-		if order.Product != productID {
+	for i := len(stopOrders) - 1; i >= 0; i-- {
+		order := stopOrders[i]
+		if order.Product != productId {
 			continue
 		}
 
-		if order.Side == "BUY" && currentPrice >= order.StopPrice {
-			log.Printf("Triggering buy order for %s at price: %f", productID, order.StopPrice)
-			executeStopBuyOCO(app, order)
+		if order.Side == TradeSideBuy && currentPrice.GreaterThanOrEqual(order.StopPrice) {
+			log.Printf("Triggering buy order for %s at price: %s", productId, order.StopPrice.String())
+			executeStopBuyOco(app, order)
 			toRemove = append(toRemove, i)
-		} else if order.Side == "SELL" && currentPrice <= order.StopPrice {
-			log.Printf("Triggering sell order for %s at price: %f", productID, order.StopPrice)
-			executeStopSellOCO(app, order)
+		} else if order.Side == TradeSideSell && currentPrice.LessThanOrEqual(order.StopPrice) {
+			log.Printf("Triggering sell order for %s at price: %s", productId, order.StopPrice.String())
+			executeStopSellOco(app, order)
 			toRemove = append(toRemove, i)
 		}
 	}
 
 	for i := len(toRemove) - 1; i >= 0; i-- {
+		time.Sleep(1 * time.Second)
 		removeStopOrder(toRemove[i])
 	}
 }
 
 func removeStopOrder(index int) {
-	if index < 0 || index >= len(StopOrders) {
-		log.Printf("Attempted to remove stop order at invalid index %d", index)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in removeStopOrder: %v", r)
+		}
+	}()
+
+	if index < 0 || index >= len(stopOrders) {
+		log.Printf("Attempted to remove stop order at invalid index %d, stopOrders Length: %d", index, len(stopOrders))
 		return
 	}
-	StopOrders = append(StopOrders[:index], StopOrders[index+1:]...)
-	fmt.Println("Stop loss order removed")
+	stopOrders = append(stopOrders[:index], stopOrders[index+1:]...)
 }
 
-func executeStopBuyOCO(app *TradeApp, order StopOrder) {
-	tradeParams := ParsedTradeParams{
+func executeStopBuyOco(app *TradeApp, order stopOrder) {
+	tradeParams := parsedTradeParams{
 		Product:      order.Product,
 		OrderType:    "MARKET",
 		Side:         order.Side,
 		BaseQuantity: order.BaseQuantity,
 	}
-	app.ConstructTrade(tradeParams, "", app.SessionID)
+	app.ConstructTrade(tradeParams, "", app.SessionId)
 
-	err := app.CancelOrder(order.PlacedOrderID)
-	if err != nil {
-		log.Printf("Failed to cancel order with ID %s: %v", order.PlacedOrderID, err)
+	if err := app.CancelOrder(order.PlacedOrderId); err != nil {
+		log.Printf("Failed to cancel order with Id %s: %v", order.PlacedOrderId, err)
 	}
 }
 
-func executeStopSellOCO(app *TradeApp, order StopOrder) {
-	tradeParams := ParsedTradeParams{
+func executeStopSellOco(app *TradeApp, order stopOrder) {
+	tradeParams := parsedTradeParams{
 		Product:      order.Product,
 		Side:         order.Side,
 		BaseQuantity: order.BaseQuantity,
 	}
-	app.ConstructTrade(tradeParams, fmt.Sprintf("%.2f", order.StopPrice), app.SessionID)
+	app.ConstructTrade(tradeParams, fmt.Sprintf("%.2f", order.StopPrice), app.SessionId)
 
-	err := app.CancelOrder(order.PlacedOrderID)
-	if err != nil {
-		log.Printf("Failed to cancel order with ID %s: %v", order.PlacedOrderID, err)
+	if err := app.CancelOrder(order.PlacedOrderId); err != nil {
+		log.Printf("Failed to cancel order with Id %s: %v", order.PlacedOrderId, err)
 	}
 }
 
@@ -161,31 +163,43 @@ func (app *TradeApp) validateOrderAgainstFFP(product, side, orderType, limitPric
 		return true
 	}
 
-	var maxLimPrice float64
-	var bestPrice float64
+	var maxLimPrice, bestPrice decimal.Decimal
+	var err error
 	switch side {
-	case "BUY":
-		bestPrice, _ = strconv.ParseFloat(priceData.Bid, 64)
-		maxLimPrice = bestPrice * 1.05
-	case "SELL":
-		bestPrice, _ = strconv.ParseFloat(priceData.Ask, 64)
-		maxLimPrice = bestPrice * 0.95
-	}
-	spend := bestPrice * amount
+	case TradeSideBuy:
+		bestPrice, err = decimal.NewFromString(priceData.Bid)
+		if err != nil {
+			log.Printf("Error parsing Bid price: %v", err)
+			return false
+		}
+		multiplier := decimal.NewFromFloat(BuyPriceMultiplier)
+		maxLimPrice = bestPrice.Mul(multiplier)
 
-	if spend > app.MaxOrderSize {
+	case TradeSideSell:
+		bestPrice, err = decimal.NewFromString(priceData.Ask)
+		if err != nil {
+			log.Printf("Error parsing Ask price: %v", err)
+			return false
+		}
+		multiplier := decimal.NewFromFloat(SellPriceMultiplier)
+		maxLimPrice = bestPrice.Mul(multiplier)
+	}
+	amountDecimal := decimal.NewFromFloat(amount)
+	spend := bestPrice.Mul(amountDecimal)
+
+	if spend.GreaterThan(app.MaxOrderSize) {
 		fmt.Println("Error: Order size exceeds the max order size limit.")
 		return false
 	}
 
-	if orderType == "LIMIT" {
-		limitPriceFloat, err := strconv.ParseFloat(limitPrice, 64)
+	if orderType == TradeTypeLimit {
+		limitPriceDecimal, err := decimal.NewFromString(limitPrice)
 		if err != nil {
-			fmt.Println("Error: Failed to convert limitPrice to float.")
+			fmt.Println("Error: Failed to convert limitPrice to decimal.")
 			return false
 		}
 
-		if (side == "BUY" && limitPriceFloat > maxLimPrice) || (side == "SELL" && limitPriceFloat < maxLimPrice) {
+		if (side == TradeSideBuy && limitPriceDecimal.GreaterThan(maxLimPrice)) || (side == TradeSideSell && limitPriceDecimal.LessThan(maxLimPrice)) {
 			fmt.Println("Error: Order price deviates more than 5% from the best bid/ask.")
 			return false
 		}

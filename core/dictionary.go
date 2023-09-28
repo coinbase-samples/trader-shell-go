@@ -17,34 +17,41 @@ limitations under the License.
 package core
 
 var execTypeDescriptions = map[string]string{
-	"0": "New",
-	"1": "Partial Fill",
-	"2": "Fill",
-	"3": "Done for day",
-	"4": "Canceled",
-	"5": "Replace",
-	"6": "Pending Cancel",
-	"7": "Stopped",
-	"8": "Rejected",
-	"9": "Suspended",
-	"A": "Pending New",
-	"B": "Calculated",
-	"C": "Expired",
-	"D": "Restated",
-	"E": "Pending Replace",
+	"0": "ExecType_NEW",
+	"1": "ExecType_PARTIAL_FILL",
+	"2": "ExecType_FILL",
+	"3": "ExecType_DONE_FOR_DAY",
+	"4": "ExecType_CANCELED",
+	"5": "ExecType_REPLACED",
+	"6": "ExecType_PENDING_CANCEL",
+	"7": "ExecType_STOPPED",
+	"8": "ExecType_REJECTED",
+	"9": "ExecType_SUSPENDED",
+	"A": "ExecType_PENDING_NEW",
+	"B": "ExecType_CALCULATED",
+	"C": "ExecType_EXPIRED",
+	"D": "ExecType_RESTATED",
+	"E": "ExecType_PENDING_REPLACE",
 }
 
 const (
-	Reset  = "\033[0m"
-	Red    = "\033[31m"
-	Green  = "\033[32m"
-	Yellow = "\033[33m"
-	Blue   = "\033[34m"
-	Purple = "\033[35m"
-	Cyan   = "\033[36m"
-	Gray   = "\033[37m"
-	White  = "\033[97m"
-	Ascii  = `
+	BuyPriceMultiplier  = 1.05
+	SellPriceMultiplier = 0.95
+)
+
+const (
+	Reset           = "\033[0m"
+	Red             = "\033[31m"
+	Green           = "\033[32m"
+	Yellow          = "\033[33m"
+	Blue            = "\033[34m"
+	Purple          = "\033[35m"
+	Cyan            = "\033[36m"
+	Gray            = "\033[37m"
+	White           = "\033[97m"
+	SuccessfulLogon = "---------------Successful Logon---------------"
+	LineSpacer      = "----------------------------------------------"
+	Ascii           = `
  ██████╗██████╗      ██████╗ ███████╗███╗   ███╗███████╗
 ██╔════╝██╔══██╗    ██╔═══██╗██╔════╝████╗ ████║██╔════╝
 ██║     ██████╔╝    ██║   ██║█████╗  ██╔████╔██║███████╗
@@ -86,4 +93,41 @@ const (
 	FixExecInstLimit   = "L"
 	FixSideBuy         = "1"
 	FixSideSell        = "2"
+	FixExecNotReturned = "Not Returned"
+	FixExecCanceled    = "Canceled"
+	FixExecFill        = "Fill"
+)
+
+const (
+	SelectTrade     = "1"
+	SelectMarket    = "2"
+	SelectOrder     = "3"
+	SelectOco       = "4"
+	SelectExit      = "x"
+	SelectExitWs    = "X"
+	AppendCancel    = "-c"
+	ArgMarket       = "mkt"
+	ArgLimit        = "lim"
+	ArgBuy          = "b"
+	ArgSell         = "s"
+	TradeTypeMarket = "MARKET"
+	TradeTypeLimit  = "LIMIT"
+	TradeSideBuy    = "BUY"
+	TradeSideSell   = "SELL"
+	LevelSideBid    = "bid"
+	LevelSideOffer  = "offer"
+	MinRequiredArgs = 4
+)
+
+const (
+	SelectOpenOrders = iota + 1
+	SelectClosedOrders
+	SelectBalances
+)
+
+const (
+	TradeInput = iota + 1
+	MarketData
+	OrderManager
+	OCOManager
 )

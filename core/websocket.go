@@ -33,17 +33,17 @@ import (
 )
 
 const (
-	uri     = "wss://ws-feed.prime.coinbase.com"
-	channel = "l2_data"
+	Uri       = "wss://ws-feed.prime.coinbase.com"
+	ChannelL2 = "l2_data"
 )
 
-func (app *TradeApp) StartWebSocket(productID string, n int) {
+func (app *TradeApp) StartWebSocket(productId string, n int) {
 	app.disconnect = false
 	log.Println("Type 'x' to disconnect.")
 
 	for {
 		doneCh := make(chan struct{})
-		if err := app.mainLoop(productID, doneCh, n); err != nil {
+		if err := app.mainLoop(productId, doneCh, n); err != nil {
 			<-doneCh
 			if app.disconnect {
 				app.FirstPrint = true
@@ -60,16 +60,16 @@ func (app *TradeApp) StartWebSocket(productID string, n int) {
 	}
 }
 
-func (app *TradeApp) mainLoop(productID string, doneCh chan struct{}, n int) error {
+func (app *TradeApp) mainLoop(productId string, doneCh chan struct{}, n int) error {
 	defer close(doneCh)
 
-	c, _, err := websocket.DefaultDialer.Dial(uri, nil)
+	c, _, err := websocket.DefaultDialer.Dial(Uri, nil)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	authMessage, err := app.createAuthMessage(productID)
+	authMessage, err := app.createAuthMessage(productId)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (app *TradeApp) mainLoop(productID string, doneCh chan struct{}, n int) err
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			input := scanner.Text()
-			if input == "x" {
+			if input == SelectExit {
 				app.disconnect = true
 				close(exitCh)
 				return
@@ -130,26 +130,26 @@ func (app *TradeApp) mainLoop(productID string, doneCh chan struct{}, n int) err
 	return nil
 }
 
-func (app *TradeApp) createAuthMessage(productID string) ([]byte, error) {
+func (app *TradeApp) createAuthMessage(productId string) ([]byte, error) {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	signature := wsSign(channel, app.APIKey, app.APISecret, app.SVCAccountID, productID, timestamp)
+	signature := wsSign(ChannelL2, app.ApiKey, app.ApiSecret, app.SvcAccountId, productId, timestamp)
 
 	msg := map[string]interface{}{
 		"type":        "subscribe",
-		"channel":     channel,
-		"access_key":  app.APIKey,
-		"api_key_id":  app.SVCAccountID,
+		"channel":     ChannelL2,
+		"access_key":  app.ApiKey,
+		"api_key_id":  app.SvcAccountId,
 		"timestamp":   timestamp,
 		"passphrase":  app.Passphrase,
 		"signature":   signature,
-		"product_ids": []string{productID},
+		"product_ids": []string{productId},
 	}
 
 	return json.Marshal(msg)
 }
 
-func wsSign(channel, key, secret, accountID, productID, timestamp string) string {
-	msg := channel + key + accountID + timestamp + productID
+func wsSign(channel, key, secret, accountId, productId, timestamp string) string {
+	msg := channel + key + accountId + timestamp + productId
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(msg))
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
@@ -161,7 +161,7 @@ func (app *TradeApp) MarketDataMode(reader *bufio.Reader) {
 
 		input, _ := reader.ReadString('\n')
 		input = strings.ToUpper(strings.TrimSpace(input))
-		if input == "X" {
+		if input == SelectExitWs {
 			return
 		}
 

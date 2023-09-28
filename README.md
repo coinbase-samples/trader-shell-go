@@ -1,6 +1,6 @@
 # trader-shell-go
 
-This is an example of a simple order and execution management system (OEMS) built for Coinbase Prime for trading over FIX, order tracking and management over REST, and order book management over WebSocket. This tool has several built-in functionalities:
+This is an example of a simple order and execution management system (OEMS) built with the [Coinbase Prime API](https://docs.cloud.coinbase.com/prime/reference) for trading over FIX, order tracking and management over REST, and order book management over WebSocket. This tool has several built-in functionalities:
 
 1. Market and limit order placement
 2. Order Preview with calculated slippage and commission
@@ -24,16 +24,21 @@ cd trader-shell-go
 ```
 2. Ensure all dependencies are available with the following command:
 ```
-go mod tidy
+go mod download
 ```
-3. You will need to populate your Coinbase Prime credentials into creds_ex.json and config_ex.yaml. Specifically, you will need to provide your SVC_ACCOUNTID on line 24 of config_ex.yaml, as well as your API credentials and Portfolio ID to creds_ex.json. Afterwards, rename creds_ex.json to creds.json and config_ex.yaml to config.yaml
-4. For FIX to operate, you will need a valid certificate, which you may import directly if you are familiar, or by running this to generate a new certificate:
+3. Copy and rename the example files that you will use in the next step to provide your credentials:
+```
+cp creds_ex.json creds.json
+cp config_ex.yaml config.yaml
+```
+4. Provide your Svc_AccountId on line 24 of config.yaml, as well as your API credentials and Portfolio ID to creds.json
+5. For FIX to operate, you will need a valid certificate, which you may import directly if you are familiar, or by running this to generate a new certificate:
 ```
 openssl s_client -showcerts -connect fix.prime.coinbase.com:4198 < /dev/null | openssl x509 -outform PEM > fix-prime.coinbase.com.pem
 ```
 5. To run the application, type the following command:
 ```
-go run . config.yaml
+go run cmd/cli/* config.yaml
 ```
 ## Using this application:
 Upon running the application, you should immediately see an OnCreate message and then an `S >>` to admin, followed by a `R <<` response back from the admin saying you are connected to Coinbase Prime over FIX. The most logical scenario in which this step fails is that either the certificate was not properly built, so please make sure you have properly completed step 5.
@@ -47,9 +52,14 @@ After successfully getting a response back from the server, you should see a lar
 ```
 Type a number and hit enter to make a choice.
 
-1. Trade input is where you can place trades over FIX, or generate an order preview over REST. The format for submitting orders is as follows:
+1. Trade input is where you can place trades over FIX, or generate an order preview over REST. The required values for order submission are as follows:
 
-`product orderType buyOrSell conditionalLimitPrice baseQuantity optionalFlags`
+`product orderType buyOrSell baseQuantity`
+
+If the orderType is specified as `lim`, the user will need to provide their limit price as the fourth parameter, before `baseQuantity`, as follows:
+
+`product orderType buyOrSell limitPrice baseQuantity`
+
 Examples of common orders are shown below:
 ```
 eth-usd mkt b 0.001
@@ -61,9 +71,9 @@ btc-usd lim b 15000 0.001 -oco 30000
 These orders translate to the following:
 
 1. I wish to market buy 0.001 ETH on the ETH-USD market
-2. I wish to limit buy 0.001 ETH at $1400 on the ETH-USD market
-3. I wish to preview a limit sell order for 15 LTC at $100
-4. I wish to place an OCO order for BTC on the BTC-USD market where my underlying limit price is $15000 and my upper trigger stop buy is $30000.
+2. I wish to limit buy 0.001 ETH at 1.4k USD on the ETH-USD market
+3. I wish to preview a limit sell order for 15 LTC at 100 USD
+4. I wish to place an OCO order for BTC on the BTC-USD market where my underlying limit price is 15k USD and my upper trigger stop buy is 30k USD.
 
 - The `-p` flag allows you to preview the order (over REST) and then you can hit `g` to submit it
 - The `-oco` flag is a complex order type where you create a limit with a stop loss (second value) — the stop loss value is recorded and stored in main menu option 4. If either 1500 or 2000 are hit, the other order is cancelled. In order for OCO mode to properly function, make sure that the product you are interested in is included in the supportedProducts variable within create.go.

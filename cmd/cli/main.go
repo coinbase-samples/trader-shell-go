@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/coinbase-samples/trader-shell-go/core"
 )
@@ -30,20 +32,31 @@ func main() {
 		log.Fatalf("Configuration file path is required as an argument.")
 	}
 
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+
 	appSettings, credentials := core.InitializeApp(os.Args)
 	app := core.CreateTradeApp(credentials)
 	core.StartServices(app, appSettings)
 
 	reader := bufio.NewReader(os.Stdin)
+	done := make(chan struct{})
 
-	for {
-		core.DisplayMainMenu()
-		input, err := core.GetUserInput(reader)
-		if err != nil {
-			fmt.Println("Error reading input:", err)
-			continue
+	go func() {
+		for {
+			core.DisplayMainMenu()
+			input, err := core.GetUserInput(reader)
+			if err != nil {
+				fmt.Println("Error reading input:", err)
+				continue
+			}
+
+			core.HandleMainMenuChoice(input, app, reader)
 		}
+	}()
 
-		core.HandleMainMenuChoice(input, app, reader)
-	}
+	<-signalChannel
+	close(done)
+	fmt.Println("Interrupt received, shutting down...")
+
 }

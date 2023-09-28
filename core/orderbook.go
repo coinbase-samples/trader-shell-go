@@ -25,7 +25,7 @@ import (
 	"strconv"
 )
 
-type LevelJSON struct {
+type LevelJson struct {
 	Side string `json:"side"`
 	Px   string `json:"px"`
 	Qty  string `json:"qty"`
@@ -45,12 +45,11 @@ type OrderBookProcessor struct {
 func NewOrderBookProcessor(snapshot string) *OrderBookProcessor {
 	var snapshotData struct {
 		Events []struct {
-			Updates []LevelJSON
+			Updates []LevelJson
 		}
 	}
 
-	err := json.Unmarshal([]byte(snapshot), &snapshotData)
-	if err != nil {
+	if err := json.Unmarshal([]byte(snapshot), &snapshotData); err != nil {
 		log.Printf("Failed to parse snapshot JSON: %v", err)
 		return nil
 	}
@@ -58,14 +57,14 @@ func NewOrderBookProcessor(snapshot string) *OrderBookProcessor {
 	var bids, offers []Level
 	for _, event := range snapshotData.Events {
 		for _, update := range event.Updates {
-			level, err := levelFromJSON(update)
+			level, err := levelFromJson(update)
 			if err != nil {
-				log.Printf("Error converting LevelJSON to Level: %v", err)
+				log.Printf("Error converting LevelJson to Level: %v", err)
 				continue
 			}
-			if level.Side == "bid" {
+			if level.Side == LevelSideBid {
 				bids = append(bids, *level)
-			} else if level.Side == "offer" {
+			} else if level.Side == LevelSideOffer {
 				offers = append(offers, *level)
 			}
 		}
@@ -80,7 +79,25 @@ func NewOrderBookProcessor(snapshot string) *OrderBookProcessor {
 	return processor
 }
 
-func levelFromJSON(l LevelJSON) (*Level, error) {
+func displayOrderBook(app *TradeApp, processor *OrderBookProcessor, n int) {
+	if !app.FirstPrint {
+		fmt.Printf("\033[%dA", 2*n)
+	} else {
+		app.FirstPrint = false
+	}
+
+	topBids := processor.GetTopNBids(n)
+	topOffers := processor.GetTopNOffers(n)
+
+	for i, j := 0, len(topOffers)-1; i < j; i, j = i+1, j-1 {
+		topOffers[i], topOffers[j] = topOffers[j], topOffers[i]
+	}
+
+	printLevels(topOffers, Red+"Ask: %.2f @ %.2f\n"+Reset)
+	printLevels(topBids, Green+"Bid: %.2f @ %.2f\n"+Reset)
+}
+
+func levelFromJson(l LevelJson) (*Level, error) {
 	px, err := strconv.ParseFloat(l.Px, 64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert Px to float64: %v", err)
@@ -94,21 +111,38 @@ func levelFromJSON(l LevelJSON) (*Level, error) {
 	return &Level{Side: l.Side, Px: px, Qty: qty}, nil
 }
 
+func filterZeroQty(levels []Level) []Level {
+	var result []Level
+	for _, level := range levels {
+		if level.Qty > 0 {
+			result = append(result, level)
+		}
+	}
+	return result
+}
+
+func printLevels(levels []Level, format string) {
+	for _, level := range levels {
+		roundedQty := math.Round(level.Qty*100) / 100
+		roundedPx := math.Round(level.Px*100) / 100
+		fmt.Printf(format, roundedQty, roundedPx)
+	}
+}
+
 func (p *OrderBookProcessor) ApplyUpdate(data string) {
 	var event struct {
 		Channel string
 		Events  []struct {
-			Updates []LevelJSON
+			Updates []LevelJson
 		}
 	}
 
-	err := json.Unmarshal([]byte(data), &event)
-	if err != nil {
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
 		log.Printf("Failed to parse update JSON: %v", err)
 		return
 	}
 
-	if event.Channel != "l2_data" {
+	if event.Channel != ChannelL2 {
 		return
 	}
 
@@ -121,17 +155,17 @@ func (p *OrderBookProcessor) ApplyUpdate(data string) {
 	p.sort()
 }
 
-func (p *OrderBookProcessor) apply(levelJSON LevelJSON) {
-	level, err := levelFromJSON(levelJSON)
+func (p *OrderBookProcessor) apply(levelJson LevelJson) {
+	level, err := levelFromJson(levelJson)
 	if err != nil {
-		log.Printf("Error converting LevelJSON to Level: %v", err)
+		log.Printf("Error converting LevelJson to Level: %v", err)
 		return
 	}
 
 	target := &p.Bids
-	if level.Side == "offer" {
+	if level.Side == LevelSideOffer {
 		target = &p.Offers
-	} else if level.Side != "bid" {
+	} else if level.Side != LevelSideBid {
 		log.Printf(Red+"Error: Unrecognized side: %s"+Reset, level.Side)
 		return
 	}
@@ -152,16 +186,6 @@ func (p *OrderBookProcessor) apply(levelJSON LevelJSON) {
 func (p *OrderBookProcessor) filterClosed() {
 	p.Bids = filterZeroQty(p.Bids)
 	p.Offers = filterZeroQty(p.Offers)
-}
-
-func filterZeroQty(levels []Level) []Level {
-	var result []Level
-	for _, level := range levels {
-		if level.Qty > 0 {
-			result = append(result, level)
-		}
-	}
-	return result
 }
 
 func (p *OrderBookProcessor) GetTopNBids(n int) []Level {
@@ -185,30 +209,4 @@ func (p *OrderBookProcessor) sort() {
 	sort.Slice(p.Offers, func(i, j int) bool {
 		return p.Offers[i].Px < p.Offers[j].Px
 	})
-}
-
-func displayOrderBook(app *TradeApp, processor *OrderBookProcessor, n int) {
-	if !app.FirstPrint {
-		fmt.Printf("\033[%dA", 2*n)
-	} else {
-		app.FirstPrint = false
-	}
-
-	topBids := processor.GetTopNBids(n)
-	topOffers := processor.GetTopNOffers(n)
-
-	for i, j := 0, len(topOffers)-1; i < j; i, j = i+1, j-1 {
-		topOffers[i], topOffers[j] = topOffers[j], topOffers[i]
-	}
-
-	printLevels(topOffers, Red+"Ask: %.2f @ %.2f\n"+Reset)
-	printLevels(topBids, Green+"Bid: %.2f @ %.2f\n"+Reset)
-}
-
-func printLevels(levels []Level, format string) {
-	for _, level := range levels {
-		roundedQty := math.Round(level.Qty*100) / 100
-		roundedPx := math.Round(level.Px*100) / 100
-		fmt.Printf(format, roundedQty, roundedPx)
-	}
 }
