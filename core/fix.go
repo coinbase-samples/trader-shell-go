@@ -81,8 +81,8 @@ func (app *TradeApp) onMessage(message *quickfix.Message, sessionId quickfix.Ses
 }
 
 func (app *TradeApp) getExecType(message *quickfix.Message) {
-	stopOrdersMutex.Lock()
-	defer stopOrdersMutex.Unlock()
+	app.stopOrdersMutex.Lock()
+	defer app.stopOrdersMutex.Unlock()
 
 	execTypeField, err := message.Body.GetString(quickfix.Tag(FixTagExecType))
 	if err != nil {

@@ -22,7 +22,6 @@ import (
 	"github.com/shopspring/decimal"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -33,7 +32,6 @@ type PriceData struct {
 	Time  time.Time `json:"time"`
 }
 
-var stopOrdersMutex sync.Mutex
 var priceCache = make(map[string]PriceData)
 
 func getAndCheckPrice(app *TradeApp, productId string) {
@@ -69,8 +67,8 @@ func fetchPrice(productId string) (decimal.Decimal, error) {
 }
 
 func processStopOrders(app *TradeApp, productId string, currentPrice decimal.Decimal) {
-	stopOrdersMutex.Lock()
-	defer stopOrdersMutex.Unlock()
+	app.stopOrdersMutex.Lock()
+	defer app.stopOrdersMutex.Unlock()
 
 	var toRemove []int
 	for i := len(stopOrders) - 1; i >= 0; i-- {

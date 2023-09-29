@@ -26,6 +26,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/quickfixgo/quickfix"
@@ -41,12 +42,13 @@ var MaxOrderSize = decimal.NewFromFloat(50000.0)
 type TradeApp struct {
 	*quickfix.MessageRouter
 	config.Config
-	SessionId    quickfix.SessionID
-	OrderBook    *OrderBookProcessor
-	disconnect   bool
-	FirstPrint   bool
-	MaxOrderSize decimal.Decimal
-	LogonChannel chan bool
+	SessionId       quickfix.SessionID
+	OrderBook       *OrderBookProcessor
+	disconnect      bool
+	FirstPrint      bool
+	MaxOrderSize    decimal.Decimal
+	LogonChannel    chan bool
+	stopOrdersMutex sync.Mutex
 }
 
 var supportedProducts = []string{
