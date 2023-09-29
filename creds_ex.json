@@ -1,0 +1,7 @@
+{
+  "Passphrase": "passphrase",
+  "ApiKey": "apikey",
+  "ApiSecret": "apisecret",
+  "PortfolioId": "portfolioid",
+  "SvcAccountId": "svcaccountid"
+ }
