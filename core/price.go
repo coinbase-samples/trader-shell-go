@@ -91,18 +91,11 @@ func processStopOrders(app *TradeApp, productId string, currentPrice decimal.Dec
 	}
 
 	for i := len(toRemove) - 1; i >= 0; i-- {
-		time.Sleep(1 * time.Second)
 		removeStopOrder(toRemove[i])
 	}
 }
 
 func removeStopOrder(index int) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered from panic in removeStopOrder: %v", r)
-		}
-	}()
-
 	if index < 0 || index >= len(stopOrders) {
 		log.Printf("Attempted to remove stop order at invalid index %d, stopOrders Length: %d", index, len(stopOrders))
 		return

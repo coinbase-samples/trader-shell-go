@@ -81,6 +81,9 @@ func (app *TradeApp) onMessage(message *quickfix.Message, sessionId quickfix.Ses
 }
 
 func (app *TradeApp) getExecType(message *quickfix.Message) {
+	stopOrdersMutex.Lock()
+	defer stopOrdersMutex.Unlock()
+
 	execTypeField, err := message.Body.GetString(quickfix.Tag(FixTagExecType))
 	if err != nil {
 		log.Printf("Error parsing execTypeField: %v", err)
@@ -112,7 +115,8 @@ func (app *TradeApp) getExecType(message *quickfix.Message) {
 	if tempOrder, ok := tempStopOrders[clOrdIdField]; ok {
 
 		tempOrder.PlacedOrderId = orderIdField
-		tempStopOrders[clOrdIdField] = tempOrder
+		delete(tempStopOrders, clOrdIdField)
+
 		if !orderExistsInStopOrders(orderIdField) {
 			stopOrders = append(stopOrders, tempOrder)
 		}

@@ -116,10 +116,10 @@ func (app *TradeApp) orderManagerMode(reader *bufio.Reader) {
 	for {
 		fmt.Println(LineSpacer)
 		fmt.Println("Select an option:")
-		fmt.Println("1. Manage open orders")
-		fmt.Println("2. View recent closed orders")
-		fmt.Println("3. View portfolio balances")
-		fmt.Println("Type 'x' to cancel")
+		fmt.Printf("%d. Manage open orders\n", SelectOpenOrders)
+		fmt.Printf("%d. View recent closed orders\n", SelectClosedOrders)
+		fmt.Printf("%d. View portfolio balances\n", SelectBalances)
+		fmt.Printf("Type '%s' to cancel\n", SelectExit)
 
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
@@ -137,15 +137,15 @@ func (app *TradeApp) orderManagerMode(reader *bufio.Reader) {
 		switch choice {
 		case SelectOpenOrders:
 			if err := app.GetOpenOrders(); err != nil {
-				return
+				fmt.Println("Error:", err)
 			}
 		case SelectClosedOrders:
 			if err := app.GetAllOrders(); err != nil {
-				return
+				fmt.Println("Error:", err)
 			}
 		case SelectBalances:
 			if err := app.ViewPortfolioBalances(); err != nil {
-				return
+				fmt.Println("Error:", err)
 			}
 		}
 	}
