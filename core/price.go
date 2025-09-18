@@ -35,13 +35,11 @@ type PriceData struct {
 var priceCache = make(map[string]PriceData)
 
 func getAndCheckPrice(app *TradeApp, productId string) {
-	currentPrice, err := fetchPrice(productId)
+	_, err := fetchPrice(productId)
 	if err != nil {
 		log.Printf("Failed to fetch price for %s: %v", productId, err)
 		return
 	}
-
-	processStopOrders(app, productId, currentPrice)
 }
 
 func fetchPrice(productId string) (decimal.Decimal, error) {
@@ -64,68 +62,6 @@ func fetchPrice(productId string) (decimal.Decimal, error) {
 
 	priceCache[productId] = data
 	return decimal.NewFromString(data.Price)
-}
-
-func processStopOrders(app *TradeApp, productId string, currentPrice decimal.Decimal) {
-	app.stopOrdersMutex.Lock()
-	defer app.stopOrdersMutex.Unlock()
-
-	var toRemove []int
-	for i := len(stopOrders) - 1; i >= 0; i-- {
-		order := stopOrders[i]
-		if order.Product != productId {
-			continue
-		}
-
-		if order.Side == TradeSideBuy && currentPrice.GreaterThanOrEqual(order.StopPrice) {
-			log.Printf("Triggering buy order for %s at price: %s", productId, order.StopPrice.String())
-			executeStopBuyOco(app, order)
-			toRemove = append(toRemove, i)
-		} else if order.Side == TradeSideSell && currentPrice.LessThanOrEqual(order.StopPrice) {
-			log.Printf("Triggering sell order for %s at price: %s", productId, order.StopPrice.String())
-			executeStopSellOco(app, order)
-			toRemove = append(toRemove, i)
-		}
-	}
-
-	for i := len(toRemove) - 1; i >= 0; i-- {
-		removeStopOrder(toRemove[i])
-	}
-}
-
-func removeStopOrder(index int) {
-	if index < 0 || index >= len(stopOrders) {
-		log.Printf("Attempted to remove stop order at invalid index %d, stopOrders Length: %d", index, len(stopOrders))
-		return
-	}
-	stopOrders = append(stopOrders[:index], stopOrders[index+1:]...)
-}
-
-func executeStopBuyOco(app *TradeApp, order stopOrder) {
-	tradeParams := parsedTradeParams{
-		Product:      order.Product,
-		OrderType:    "MARKET",
-		Side:         order.Side,
-		BaseQuantity: order.BaseQuantity,
-	}
-	app.ConstructTrade(tradeParams, "", app.SessionId)
-
-	if err := app.CancelOrder(order.PlacedOrderId); err != nil {
-		log.Printf("Failed to cancel order with Id %s: %v", order.PlacedOrderId, err)
-	}
-}
-
-func executeStopSellOco(app *TradeApp, order stopOrder) {
-	tradeParams := parsedTradeParams{
-		Product:      order.Product,
-		Side:         order.Side,
-		BaseQuantity: order.BaseQuantity,
-	}
-	app.ConstructTrade(tradeParams, fmt.Sprintf("%.2f", order.StopPrice), app.SessionId)
-
-	if err := app.CancelOrder(order.PlacedOrderId); err != nil {
-		log.Printf("Failed to cancel order with Id %s: %v", order.PlacedOrderId, err)
-	}
 }
 
 func StartPriceFetchingTask(app *TradeApp, products []string, interval time.Duration) {

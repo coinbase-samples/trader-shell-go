@@ -26,7 +26,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/quickfixgo/quickfix"
@@ -42,20 +41,18 @@ var MaxOrderSize = decimal.NewFromFloat(50000.0)
 type TradeApp struct {
 	*quickfix.MessageRouter
 	config.Config
-	SessionId       quickfix.SessionID
-	OrderBook       *OrderBookProcessor
-	disconnect      bool
-	FirstPrint      bool
-	MaxOrderSize    decimal.Decimal
-	LogonChannel    chan bool
-	stopOrdersMutex sync.Mutex
+	SessionId    quickfix.SessionID
+	OrderBook    *OrderBookProcessor
+	disconnect   bool
+	FirstPrint   bool
+	MaxOrderSize decimal.Decimal
+	LogonChannel chan bool
 }
 
 var supportedProducts = []string{
 	"ETH-USD",
 	"LTC-USD",
 }
-var stopOrders []stopOrder
 
 func DisplayMainMenu() {
 	fmt.Println(LineSpacer)
@@ -63,7 +60,6 @@ func DisplayMainMenu() {
 	fmt.Printf("%d. Trade input\n", TradeInput)
 	fmt.Printf("%d. Market data\n", MarketData)
 	fmt.Printf("%d. Order manager\n", OrderManager)
-	fmt.Printf("%d. OCO manager\n", OCOManager)
 	fmt.Printf("Type '%s' to quit.\n", SelectExit)
 }
 
@@ -75,8 +71,6 @@ func HandleMainMenuChoice(choice string, app *TradeApp, reader *bufio.Reader) {
 		app.MarketDataMode(reader)
 	case SelectOrder:
 		app.orderManagerMode(reader)
-	case SelectOco:
-		app.displayStopOrders()
 	case SelectExit:
 		fmt.Println("Exiting...")
 		os.Exit(0)

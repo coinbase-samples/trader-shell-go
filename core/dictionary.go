@@ -102,7 +102,6 @@ const (
 	SelectTrade     = "1"
 	SelectMarket    = "2"
 	SelectOrder     = "3"
-	SelectOco       = "4"
 	SelectExit      = "x"
 	SelectExitWs    = "X"
 	AppendCancel    = "-c"
@@ -129,5 +128,4 @@ const (
 	TradeInput = iota + 1
 	MarketData
 	OrderManager
-	OCOManager
 )

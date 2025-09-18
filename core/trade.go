@@ -33,25 +33,9 @@ type parsedTradeParams struct {
 	BaseQuantity string
 }
 
-type stopOrder struct {
-	Product       string
-	Side          string
-	Amount        float64
-	StopPrice     decimal.Decimal
-	PlacedOrderId string
-	BaseQuantity  string
-}
-
-var tempStopOrders = make(map[string]stopOrder)
-
 func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 	isPreview := false
-	isOco := false
-	var ocoPrice decimal.Decimal
 	var err error
-	var clOrdId string
-	var newOrder stopOrder
-	var limitPrice decimal.Decimal
 
 	for i := 0; i < len(args); {
 		switch args[i] {
@@ -59,30 +43,11 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 			isPreview = true
 			args = append(args[:i], args[i+1:]...)
 			i--
-		case "-oco":
-			isOco = true
-			if i+1 < len(args) {
-				ocoPrice, err = decimal.NewFromString(args[i+1])
-				if err != nil {
-					fmt.Println("Error: Invalid OCO price.")
-					return
-				}
-				args = append(args[:i], args[i+2:]...)
-				i -= 2
-			} else {
-				fmt.Println("Error: -oco flag should be followed by a valid price.")
-				return
-			}
 		case "h":
 			printHelp()
 			return
 		}
 		i++
-	}
-
-	if isPreview && isOco {
-		fmt.Println("Error: -p and -oco flags cannot be used together.")
-		return
 	}
 
 	if len(args) < MinRequiredArgs {
@@ -96,13 +61,8 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 		return
 	}
 
-	if isOco && params.OrderType != TradeTypeLimit {
-		fmt.Println("Error: -oco can only be used with limit (lim) orders.")
-		return
-	}
-
 	if params.OrderType != TradeTypeMarket {
-		limitPrice, err = decimal.NewFromString(limitPriceStr)
+		_, err = decimal.NewFromString(limitPriceStr)
 		if err != nil {
 			fmt.Println("Error parsing limit price:", err)
 			return
@@ -117,11 +77,6 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 		return
 	}
 
-	if isOco && (params.Side == ArgBuy && ocoPrice.LessThanOrEqual(limitPrice) || params.Side == ArgSell && ocoPrice.GreaterThanOrEqual(limitPrice)) {
-		fmt.Println("Error: Invalid relationship between order price and OCO price.")
-		return
-	}
-
 	if !app.validateOrderAgainstFFP(params.Product, params.Side, params.OrderType, limitPriceStr, amount) {
 		return
 	}
@@ -133,29 +88,18 @@ func (app *TradeApp) ProcessSimpleTradeInput(args []string) {
 		return
 	}
 
-	clOrdId = app.ConstructTrade(params, limitPriceStr, app.SessionId)
+	app.ConstructTrade(params, limitPriceStr, app.SessionId)
 
-	if isOco {
-		newOrder = stopOrder{
-			Product:      params.Product,
-			Side:         params.Side,
-			BaseQuantity: params.BaseQuantity,
-			Amount:       amount,
-			StopPrice:    ocoPrice,
-		}
-		tempStopOrders[clOrdId] = newOrder
-	}
 }
 
 func printHelp() {
 	fmt.Println(Purple + "Accepts market (mkt) and limit (lim) base quantity orders.")
 	fmt.Println("Append '-p' to submit an order preview over REST.")
-	fmt.Println("Append '-oco' to submit an OCO order. Manage OCOs from main menu.")
 	fmt.Println("Format: product mkt/lim b/s lim_price base_quantity")
 	fmt.Println("Ex: eth-usd mkt s 0.001")
 	fmt.Println("Ex: eth-usd lim b 1400 0.001")
 	fmt.Println("Ex: ltc-usd lim s 100 15 -p")
-	fmt.Println("Ex: eth-usd lim b 1500 0.001 -oco 2000\n" + Reset)
+	fmt.Println("Ex: eth-usd lim b 1500 0.001\n" + Reset)
 }
 
 func parseArgs(args []string) (parsedTradeParams, string, error) {
