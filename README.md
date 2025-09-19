@@ -5,12 +5,10 @@ This is an example of a simple order and execution management system (OEMS) buil
 1. Market and limit order placement
 2. Order Preview with calculated slippage and commission
 3. Fat finger protection for both total notional order size and overly marketable limit orders
-4. One Cancels the Other (OCO) orders with logic that emulates a stop loss order
-5. A maintained, customizable order book for any product supported by Prime
-6. Open order management and cancellation
-7. Closed order tracking
-8. Account balances at the asset level
-9. OCO order management
+4. A maintained, customizable order book for any product supported by Prime
+5. Open order management and cancellation
+6. Closed order tracking
+7. Account balances at the asset level
 
 **Disclaimer: This application is meant to be for example purposes only. It is possible to lose real funds through use of this application. Please exercise extreme caution in using this application when connected to an account with real funds. Further, nothing contained within this application should be viewed as a recommendation to buy or sell digital assets or to employ a particular investment strategy, codes, or APIs. Coinbase makes no representation on the accuracy, suitability, or validity of any information provided herein.**
 
@@ -48,7 +46,6 @@ After successfully getting a response back from the server, you should see a lar
 1. trade input
 2. market data
 3. order manager
-4. oco manager
 ```
 Type a number and hit enter to make a choice.
 
@@ -65,7 +62,6 @@ Examples of common orders are shown below:
 eth-usd mkt b 0.001
 eth-usd lim b 1400 0.001
 ltc-usd lim s 100 15 -p
-btc-usd lim b 15000 0.001 -oco 30000
 ```
 
 These orders translate to the following:
@@ -73,11 +69,9 @@ These orders translate to the following:
 1. I wish to market buy 0.001 ETH on the ETH-USD market
 2. I wish to limit buy 0.001 ETH at 1.4k USD on the ETH-USD market
 3. I wish to preview a limit sell order for 15 LTC at 100 USD
-4. I wish to place an OCO order for BTC on the BTC-USD market where my underlying limit price is 15k USD and my upper trigger stop buy is 30k USD.
 
 - The `-p` flag allows you to preview the order (over REST) and then you can hit `g` to submit it
-- The `-oco` flag is a complex order type where you create a limit with a stop loss (second value) — the stop loss value is recorded and stored in main menu option 4. If either 1500 or 2000 are hit, the other order is cancelled. In order for OCO mode to properly function, make sure that the product you are interested in is included in the supportedProducts variable within create.go.
-- Fat finger protection will prevent you from placing a market order that costs over a certain notional limit, or a limit order that is more than 5% over the current market price. Like OCO orders, this functionality requires including additional products to the supportedProducts variable within create.go, as well as adjusting MaxOrderSize, also within create.go.
+- Fat finger protection will prevent you from placing a market order that costs over a certain notional limit, or a limit order that is more than 5% over the current market price. This functionality requires including additional products to the supportedProducts variable within create.go, as well as adjusting MaxOrderSize, also within create.go.
 
 
 2. Market data will allow you to subscribe to any available Coinbase Prime product and visualize its order book up to 9 levels deep, e.g.:
@@ -87,4 +81,3 @@ eth-usd 5
 This screen will also present your available balance so that you may quickly exit and place a trade with the relevant trade information that this screen provides.
 
 3. Order manager provides insight into open, closed, and balance data. You are able to cancel open orders directly from the open orders screen by naming an order by number and including `-c`, i.e. `1 -c`
-4. OCO manager provides visual data for currently open OCO orders. You may cancel an OCO order directly from this screen by naming an order by number and including `-c`, i.e. `1 -c`
