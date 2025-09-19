@@ -81,8 +81,6 @@ func (app *TradeApp) onMessage(message *quickfix.Message, sessionId quickfix.Ses
 }
 
 func (app *TradeApp) getExecType(message *quickfix.Message) {
-	app.stopOrdersMutex.Lock()
-	defer app.stopOrdersMutex.Unlock()
 
 	execTypeField, err := message.Body.GetString(quickfix.Tag(FixTagExecType))
 	if err != nil {
@@ -104,29 +102,6 @@ func (app *TradeApp) getExecType(message *quickfix.Message) {
 	if err != nil {
 		log.Printf("Error parsing orderIdField: %v", err)
 		return
-	}
-
-	clOrdIdField, err := message.Body.GetString(quickfix.Tag(FixTagClOrdId))
-	if err != nil {
-		log.Printf("Error parsing clOrdIdField: %v", err)
-		return
-	}
-
-	if tempOrder, ok := tempStopOrders[clOrdIdField]; ok {
-
-		tempOrder.PlacedOrderId = orderIdField
-		delete(tempStopOrders, clOrdIdField)
-
-		if !orderExistsInStopOrders(orderIdField) {
-			stopOrders = append(stopOrders, tempOrder)
-		}
-	}
-
-	if execTypeDescription == FixExecFill || execTypeDescription == FixExecCanceled {
-		index := findOrderIndexById(orderIdField)
-		if index != -1 {
-			stopOrders = append(stopOrders[:index], stopOrders[index+1:]...)
-		}
 	}
 
 	if reason == FixExecNotReturned {
